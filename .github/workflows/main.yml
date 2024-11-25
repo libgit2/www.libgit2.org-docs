@@ -1,0 +1,53 @@
+name: Generate Documentation
+
+on:
+  pull_request:
+    branches: [ main ]
+  repository_dispatch:
+    types: [ generate ]
+  workflow_dispatch:
+  schedule:
+  - cron: '15 5 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Only run scheduled workflows on the main repository; prevents people
+    # from using build minutes on their forks.
+    if: github.repository == 'libgit2/www.libgit2.org-docs'
+    name: "Generate documentation"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        path: docs
+        fetch-depth: 0
+        ssh-key: ${{ secrets.DOCS_PUBLISH_KEY }}
+    - name: Generate documentation
+      run: |
+        npm install
+        ./generate ..
+      working-directory: docs/_generator
+    - name: Examine changes
+      run: |
+        if [ -n "$(git diff --name-only)" ]; then
+           echo "changes=true" >> $GITHUB_OUTPUT
+        else
+           echo "changes=false" >> $GITHUB_OUTPUT
+        fi
+      id: check
+      working-directory: docs
+    - name: Publish documentation
+      run: |
+        DATE=$(date +"%Y-%m-%d")
+
+        git config user.name 'Documentation Site Generator'
+        git config user.email 'libgit2@users.noreply.github.com'
+        git add .
+        git commit -m"Documentation update ${DATE}"
+        git push origin main
+      if: steps.check.outputs.changes == 'true'
+      working-directory: docs
